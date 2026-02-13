@@ -1,0 +1,8 @@
+{
+  "name": "Copy of SV PLAY - easypanel",
+  "description": "Sistema de controle e playout IPTV de alta performance. Sincronize seu celular com qualquer TV ou PC.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

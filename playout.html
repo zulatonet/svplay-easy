@@ -1,0 +1,180 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SV PLAY - RECEPTOR STANDALONE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@latest/dist/mpegts.min.js"></script>
+    <style>
+        body { background: #000; color: #fff; font-family: sans-serif; overflow: hidden; margin: 0; user-select: none; -webkit-user-select: none; }
+        .animate-pulse-red { animation: pulse-red 2s infinite; }
+        @keyframes pulse-red { 0%, 100% { box-shadow: 0 0 20px rgba(220,38,38,0.2); } 50% { box-shadow: 0 0 60px rgba(220,38,38,0.5); } }
+        .hide-cursor { cursor: none !important; }
+        ::-webkit-scrollbar { display: none; }
+    </style>
+</head>
+<body>
+    <div id="app-root" class="h-screen w-screen flex flex-col items-center justify-center relative overflow-hidden transition-all duration-500">
+        
+        <!-- LOGIN / PIN -->
+        <div id="login-screen" class="flex flex-col items-center justify-center p-6 text-center">
+            <h1 class="text-7xl font-black text-red-600 italic tracking-tighter mb-2">SV PLAY</h1>
+            <p class="text-zinc-700 text-[10px] font-black uppercase tracking-[0.5em] mb-12">RECEPTOR STANDALONE</p>
+            <form id="pin-form" class="max-w-xs w-full space-y-4">
+                <input type="text" id="pin-input" maxlength="4" placeholder="0000" class="w-full bg-zinc-900 border-2 border-white/5 rounded-3xl px-6 py-8 text-5xl font-mono font-black text-center text-white focus:border-red-600 outline-none transition-all placeholder:text-zinc-800">
+                <button type="submit" class="w-full bg-red-600 py-6 rounded-3xl font-black text-xs uppercase tracking-widest text-white shadow-2xl active:scale-95 transition-all">CONECTAR</button>
+            </form>
+        </div>
+
+        <!-- DESBLOQUEIO -->
+        <div id="unlock-screen" class="hidden absolute inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center cursor-pointer">
+            <div class="w-24 h-24 bg-red-600 rounded-full flex items-center justify-center animate-pulse-red mb-8">
+                <svg class="w-12 h-12 text-white ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" /></svg>
+            </div>
+            <p class="text-zinc-500 font-black text-[9px] uppercase tracking-[0.4em]">Toque para Ativar</p>
+        </div>
+
+        <!-- PLAYER -->
+        <div id="player-container" class="hidden absolute inset-0 w-full h-full bg-black">
+            <video id="main-video" class="w-full h-full object-contain" playsinline autoplay></video>
+            
+            <div id="loading-overlay" class="hidden absolute inset-0 flex flex-col items-center justify-center z-20 bg-black">
+                <div class="w-8 h-8 border-4 border-white/5 border-t-red-600 rounded-full animate-spin"></div>
+            </div>
+
+            <!-- UI OVERLAYS -->
+            <div id="ui-layer" class="absolute top-0 inset-x-0 p-8 z-[60] flex justify-between items-start transition-opacity duration-700 pointer-events-none">
+                <div id="signal-toast" class="hidden bg-black/90 text-white px-6 py-4 rounded-2xl border border-white/5">
+                    <span class="text-red-600 font-black text-[10px] mr-3">ONLINE</span>
+                    <span id="signal-name" class="text-[10px] font-black uppercase tracking-tight"></span>
+                </div>
+                <div class="flex gap-4 pointer-events-auto">
+                    <button id="fullscreen-btn" class="bg-white/5 p-3 rounded-full text-white/50 border border-white/5"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg></button>
+                    <button id="logout-btn" class="bg-white/5 px-6 py-3 rounded-full text-[8px] font-black uppercase text-white/50 border border-white/5">Sair</button>
+                </div>
+            </div>
+
+            <!-- Fallback Warning - Agora amarrado ao ui-layer -->
+            <div id="insecure-msg" class="hidden absolute bottom-24 left-1/2 -translate-x-1/2 z-50 w-full max-w-xs px-6 transition-opacity duration-500">
+                <div class="bg-black/90 backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 text-center shadow-2xl">
+                    <p class="text-amber-500 text-[8px] font-black uppercase tracking-widest mb-4">Problema de carregamento detectado</p>
+                    <button id="external-btn" class="bg-white text-black px-6 py-4 rounded-2xl text-[9px] font-black uppercase w-full">ABRIR LINK EXTERNO</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="idle-screen" class="hidden text-center opacity-[0.03] pointer-events-none">
+            <h1 class="text-[15vw] font-black text-white italic tracking-tighter leading-none">SV PLAY</h1>
+        </div>
+    </div>
+
+    <script>
+        let activePin = localStorage.getItem('svplay_standalone_pin') || '';
+        let currentUrl = '';
+        let hlsInstance = null;
+        let tsInstance = null;
+        let uiTimer = null;
+        let insecureVisible = false;
+
+        const video = document.getElementById('main-video');
+        const root = document.getElementById('app-root');
+        const uiLayer = document.getElementById('ui-layer');
+        const insecureMsg = document.getElementById('insecure-msg');
+
+        window.onload = () => { if (activePin) { showUnlock(); startSync(); } else { showLogin(); } };
+
+        function resetUITimer() {
+            uiLayer.style.opacity = '1';
+            uiLayer.style.pointerEvents = 'auto';
+            if (insecureVisible) insecureMsg.style.opacity = '1';
+            root.classList.remove('hide-cursor');
+            
+            if (uiTimer) clearTimeout(uiTimer);
+            uiTimer = setTimeout(() => {
+                uiLayer.style.opacity = '0';
+                uiLayer.style.pointerEvents = 'none';
+                insecureMsg.style.opacity = '0';
+                root.classList.add('hide-cursor');
+            }, 4000);
+        }
+
+        window.addEventListener('mousemove', resetUITimer);
+        window.addEventListener('touchstart', resetUITimer);
+        window.addEventListener('keydown', resetUITimer);
+
+        function showLogin() { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('unlock-screen').classList.add('hidden'); }
+        function showUnlock() { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('unlock-screen').classList.remove('hidden'); }
+        function showPlayer() { document.getElementById('unlock-screen').classList.add('hidden'); document.getElementById('player-container').classList.remove('hidden'); if(!currentUrl) document.getElementById('idle-screen').classList.remove('hidden'); resetUITimer(); }
+
+        document.getElementById('pin-form').onsubmit = (e) => {
+            e.preventDefault();
+            const pin = document.getElementById('pin-input').value.trim();
+            if (pin.length === 4) { activePin = pin; localStorage.setItem('svplay_standalone_pin', pin); showUnlock(); startSync(); }
+        };
+
+        document.getElementById('unlock-screen').onclick = () => { showPlayer(); if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); };
+        document.getElementById('logout-btn').onclick = () => { localStorage.removeItem('svplay_standalone_pin'); location.reload(); };
+
+        function playContent(item) {
+            currentUrl = item.url;
+            document.getElementById('signal-name').innerText = item.name;
+            document.getElementById('signal-toast').classList.remove('hidden');
+            setTimeout(() => document.getElementById('signal-toast').classList.add('hidden'), 5000);
+
+            if (hlsInstance) hlsInstance.destroy(); if (tsInstance) tsInstance.destroy();
+            video.pause(); video.removeAttribute('src'); video.load();
+            document.getElementById('loading-overlay').classList.remove('hidden');
+            insecureMsg.classList.add('hidden');
+            insecureVisible = false;
+            document.getElementById('idle-screen').classList.add('hidden');
+
+            const lowUrl = currentUrl.toLowerCase();
+            const isMP4 = lowUrl.includes('.mp4') || lowUrl.includes('.mkv');
+            
+            setTimeout(() => { 
+                if (document.getElementById('loading-overlay').classList.contains('hidden')) return;
+                insecureMsg.classList.remove('hidden');
+                insecureVisible = true;
+                resetUITimer();
+            }, 8000);
+
+            try {
+                if (isMP4) {
+                    video.src = currentUrl;
+                    video.oncanplay = () => { video.play(); document.getElementById('loading-overlay').classList.add('hidden'); };
+                } else if (lowUrl.includes('.m3u8') && Hls.isSupported()) {
+                    hlsInstance = new Hls({ maxBufferLength: 10, maxBufferSize: 30 * 1000 * 1000 }); 
+                    hlsInstance.loadSource(currentUrl); hlsInstance.attachMedia(video);
+                    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { video.play(); document.getElementById('loading-overlay').classList.add('hidden'); });
+                } else if (mpegts.getFeatureList().mseLivePlayback) {
+                    tsInstance = mpegts.createPlayer({ type: 'mse', isLive: true, url: currentUrl });
+                    tsInstance.attachMediaElement(video); tsInstance.load(); tsInstance.play();
+                    document.getElementById('loading-overlay').classList.add('hidden');
+                } else { video.src = currentUrl; video.play(); document.getElementById('loading-overlay').classList.add('hidden'); }
+            } catch (e) {}
+        }
+
+        document.getElementById('external-btn').onclick = () => window.open(currentUrl, '_blank');
+
+        function startSync() {
+            const connect = () => {
+                const es = new EventSource(`https://ntfy.sh/skysync_remote_${activePin}/sse`);
+                es.onmessage = (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        if (data.message) {
+                            const msg = JSON.parse(data.message);
+                            if (msg.pin === activePin && msg.type === 'PLAY_CONTENT') playContent(msg.payload);
+                        }
+                    } catch (err) {}
+                };
+                es.onerror = () => { es.close(); setTimeout(connect, 3000); };
+            };
+            connect();
+        }
+    </script>
+</body>
+</html>
