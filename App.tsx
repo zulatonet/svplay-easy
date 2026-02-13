@@ -313,6 +313,22 @@ const Home: React.FC = () => {
     }
   };
 
+  const smartFetch = async (url: string) => {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Erro direto");
+      return await response.text();
+    } catch (e) {
+      // Fallback para Proxy de CORS
+      console.log("Tentando via Proxy CORS...");
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const response = await fetch(proxyUrl);
+      const data = await response.json();
+      if (!data || !data.contents) throw new Error("Não foi possível acessar a lista mesmo via proxy.");
+      return data.contents;
+    }
+  };
+
   const handleUrlLoad = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!urlInput) return;
@@ -320,12 +336,10 @@ const Home: React.FC = () => {
     setStatus('Baixando Lista...');
     
     try {
-      const response = await fetch(urlInput);
-      if (!response.ok) throw new Error("Não foi possível baixar a lista.");
-      const text = await response.text();
+      const text = await smartFetch(urlInput);
       await processAndSave(text, "Lista Remota", urlInput);
     } catch (e: any) {
-      alert(`Erro: Tente carregar via arquivo M3U.`);
+      alert(`Erro crítico ao carregar lista. Verifique o link ou tente carregar via arquivo M3U.`);
       setLoading(false);
       setStatus('');
     }
@@ -336,12 +350,10 @@ const Home: React.FC = () => {
     setLoading(true);
     setStatus('Recuperando Nuvem...');
     try {
-      const response = await fetch(auth.user.playlist_url);
-      if (!response.ok) throw new Error("A lista salva não está acessível no momento.");
-      const text = await response.text();
+      const text = await smartFetch(auth.user.playlist_url);
       await processAndSave(text, "Minha Lista", auth.user.playlist_url);
     } catch (e: any) {
-      alert(`Erro ao carregar lista: ${e.message}`);
+      alert(`Erro ao recuperar lista da nuvem: ${e.message}`);
       setLoading(false);
       setStatus('');
     }

@@ -39,8 +39,12 @@ export const parseM3U = async (text: string): Promise<IPTVItem[]> => {
     } else if (line.startsWith('http')) {
       if (currentMetadata) {
         const urlLower = line.toLowerCase();
-        if (urlLower.includes('.mp4') || urlLower.includes('.mkv')) {
+        
+        // Detectar tipo pelo formato da URL se não houver grupo definido
+        if (urlLower.includes('.mp4') || urlLower.includes('.mkv') || urlLower.includes('.avi')) {
           currentMetadata.type = 'movie';
+        } else if (urlLower.includes('.m3u8') || urlLower.includes('chunklist')) {
+          // Mantém como live se for m3u8 padrão
         }
 
         items.push({
@@ -52,7 +56,8 @@ export const parseM3U = async (text: string): Promise<IPTVItem[]> => {
       }
     }
 
-    if (i % 2000 === 0) {
+    // Yield para não travar a UI em listas gigantes
+    if (i % 1000 === 0) {
       await new Promise(resolve => setTimeout(resolve, 0));
     }
   }

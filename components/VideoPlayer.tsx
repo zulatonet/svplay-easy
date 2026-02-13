@@ -25,20 +25,33 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }
   const getProcessedUrl = (inputUrl: string) => {
     let finalUrl = inputUrl.trim();
     const lowerUrl = finalUrl.toLowerCase();
+    
+    // Se for um arquivo de vídeo conhecido, retorna direto
     if (lowerUrl.includes('.mp4') || lowerUrl.includes('.mkv') || lowerUrl.includes('.avi') || lowerUrl.includes('.ts')) {
       return finalUrl;
     }
-    const lastPart = finalUrl.split('/').pop() || '';
-    if (!lastPart.includes('.') && !finalUrl.includes('?')) {
-      finalUrl = `${finalUrl}.m3u8`;
+
+    // Se a URL já for um m3u8 explícito, retorna
+    if (lowerUrl.includes('.m3u8')) {
+        return finalUrl;
     }
+
+    // Lógica para links sem extensão: muitos links IPTV m3u8 não terminam em .m3u8
+    // Se a URL contém /live/ ou /m3u8/ ou parece um link de painel, e não tem extensão, 
+    // tentamos anexar .m3u8 apenas se não houver parâmetros de busca (?)
+    const urlObj = new URL(finalUrl);
+    if (!urlObj.pathname.includes('.') && !urlObj.search) {
+        // Se for um link limpo de painel, anexamos .m3u8 para forçar o HLS.js a tentar
+        return `${finalUrl}.m3u8`;
+    }
+
     return finalUrl;
   };
 
   const processedUrl = getProcessedUrl(url);
   const lowerProcessed = processedUrl.toLowerCase();
   const isMP4 = lowerProcessed.includes('.mp4') || lowerProcessed.includes('.mkv') || lowerProcessed.includes('.mov');
-  const isHLS = lowerProcessed.includes('.m3u8') || lowerProcessed.includes('output=hls');
+  const isHLS = lowerProcessed.includes('.m3u8') || lowerProcessed.includes('output=hls') || lowerProcessed.includes('stream') || lowerProcessed.includes('chunklist');
 
   const cleanUp = () => {
     if (hlsRef.current) { 
@@ -95,9 +108,9 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }
       else if (isHLS && Hls.isSupported()) {
         const hls = new Hls({ 
           enableWorker: true, 
-          maxBufferLength: 10, // Buffer mínimo para TVs (10 segundos)
+          maxBufferLength: 10,
           maxMaxBufferLength: 15,
-          maxBufferSize: 30 * 1000 * 1000, // 30MB max para evitar crash de RAM
+          maxBufferSize: 30 * 1000 * 1000,
           lowLatencyMode: true
         });
         hlsRef.current = hls;
@@ -138,7 +151,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }
          </div>
       )}
 
-      {/* Fallback Warning - Agora obedece ao showUI */}
       {showInsecureWarning && showUI && (
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 w-full max-w-xs px-6 animate-in fade-in zoom-in duration-300">
           <div className="bg-black/90 backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 text-center shadow-2xl">
@@ -164,7 +176,6 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }
 
       <video ref={videoRef} className="w-full h-full object-contain" autoPlay playsInline muted={isMuted} />
 
-      {/* Botões de Controle - Agora obedecem rigorosamente ao showUI */}
       <div className={`transition-opacity duration-500 ${showUI ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         {isMuted && !loading && (
           <button onClick={() => { setIsMuted(false); localStorage.setItem('audio_globally_unlocked', 'true'); }} className="absolute bottom-12 left-1/2 -translate-x-1/2 z-50 bg-white text-black px-8 py-4 rounded-full text-[9px] font-black uppercase shadow-2xl animate-bounce">
