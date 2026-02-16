@@ -45,6 +45,15 @@
                 <div class="w-8 h-8 border-4 border-white/5 border-t-red-600 rounded-full animate-spin"></div>
             </div>
 
+            <!-- INDICADOR SEEK -->
+            <div id="seek-indicator" class="hidden absolute inset-0 z-[70] flex items-center justify-center pointer-events-none">
+                <div class="bg-black/80 backdrop-blur-2xl px-10 py-6 rounded-[2rem] border border-white/10 flex flex-col items-center gap-3">
+                   <div id="seek-icon-fwd" class="hidden"><svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg></div>
+                   <div id="seek-icon-bwd" class="hidden"><svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg></div>
+                   <span id="seek-text" class="text-lg font-black text-white italic tracking-tighter"></span>
+                </div>
+            </div>
+
             <!-- UI OVERLAYS -->
             <div id="ui-layer" class="absolute top-0 inset-x-0 p-8 z-[60] flex justify-between items-start transition-opacity duration-700 pointer-events-none">
                 <div id="signal-toast" class="hidden bg-black/90 text-white px-6 py-4 rounded-2xl border border-white/5">
@@ -57,7 +66,7 @@
                 </div>
             </div>
 
-            <!-- Fallback Warning - Agora amarrado ao ui-layer -->
+            <!-- Fallback Warning -->
             <div id="insecure-msg" class="hidden absolute bottom-24 left-1/2 -translate-x-1/2 z-50 w-full max-w-xs px-6 transition-opacity duration-500">
                 <div class="bg-black/90 backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 text-center shadow-2xl">
                     <p class="text-amber-500 text-[8px] font-black uppercase tracking-widest mb-4">Problema de carregamento detectado</p>
@@ -78,6 +87,9 @@
         let tsInstance = null;
         let uiTimer = null;
         let insecureVisible = false;
+        let isMP4 = false;
+        let lastTap = 0;
+        let seekTimer = null;
 
         const video = document.getElementById('main-video');
         const root = document.getElementById('app-root');
@@ -91,19 +103,44 @@
             uiLayer.style.pointerEvents = 'auto';
             if (insecureVisible) insecureMsg.style.opacity = '1';
             root.classList.remove('hide-cursor');
-            
             if (uiTimer) clearTimeout(uiTimer);
-            uiTimer = setTimeout(() => {
-                uiLayer.style.opacity = '0';
-                uiLayer.style.pointerEvents = 'none';
-                insecureMsg.style.opacity = '0';
-                root.classList.add('hide-cursor');
-            }, 4000);
+            uiTimer = setTimeout(() => { uiLayer.style.opacity = '0'; uiLayer.style.pointerEvents = 'none'; insecureMsg.style.opacity = '0'; root.classList.add('hide-cursor'); }, 4000);
         }
 
         window.addEventListener('mousemove', resetUITimer);
         window.addEventListener('touchstart', resetUITimer);
-        window.addEventListener('keydown', resetUITimer);
+        window.addEventListener('keydown', (e) => {
+            resetUITimer();
+            if (!isMP4) return;
+            if (e.key === 'ArrowRight') seek(300);
+            if (e.key === 'ArrowLeft') seek(-300);
+        });
+
+        function seek(seconds) {
+            if (!isMP4) return;
+            video.currentTime = Math.max(0, Math.min(video.currentTime + seconds, video.duration));
+            const ind = document.getElementById('seek-indicator');
+            const iconFwd = document.getElementById('seek-icon-fwd');
+            const iconBwd = document.getElementById('seek-icon-bwd');
+            const text = document.getElementById('seek-text');
+            
+            ind.classList.remove('hidden');
+            if (seconds > 0) { iconFwd.classList.remove('hidden'); iconBwd.classList.add('hidden'); text.innerText = '+ 5:00'; }
+            else { iconBwd.classList.remove('hidden'); iconFwd.classList.add('hidden'); text.innerText = '- 5:00'; }
+            
+            if (seekTimer) clearTimeout(seekTimer);
+            seekTimer = setTimeout(() => ind.classList.add('hidden'), 800);
+        }
+
+        root.addEventListener('touchstart', (e) => {
+            if (!isMP4) return;
+            const now = Date.now();
+            if (now - lastTap < 300) {
+                const touchX = e.touches[0].clientX;
+                if (touchX > window.innerWidth / 2) seek(300); else seek(-300);
+            }
+            lastTap = now;
+        });
 
         function showLogin() { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('unlock-screen').classList.add('hidden'); }
         function showUnlock() { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('unlock-screen').classList.remove('hidden'); }
@@ -127,18 +164,15 @@
             if (hlsInstance) hlsInstance.destroy(); if (tsInstance) tsInstance.destroy();
             video.pause(); video.removeAttribute('src'); video.load();
             document.getElementById('loading-overlay').classList.remove('hidden');
-            insecureMsg.classList.add('hidden');
-            insecureVisible = false;
+            insecureMsg.classList.add('hidden'); insecureVisible = false;
             document.getElementById('idle-screen').classList.add('hidden');
 
             const lowUrl = currentUrl.toLowerCase();
-            const isMP4 = lowUrl.includes('.mp4') || lowUrl.includes('.mkv');
+            isMP4 = lowUrl.includes('.mp4') || lowUrl.includes('.mkv');
             
             setTimeout(() => { 
                 if (document.getElementById('loading-overlay').classList.contains('hidden')) return;
-                insecureMsg.classList.remove('hidden');
-                insecureVisible = true;
-                resetUITimer();
+                insecureMsg.classList.remove('hidden'); insecureVisible = true; resetUITimer();
             }, 8000);
 
             try {
