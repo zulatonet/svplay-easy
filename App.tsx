@@ -6,6 +6,7 @@ import { savePlaylist } from './services/db';
 import { PlaylistData } from './types';
 import ControllerView from './components/ControllerView';
 import PlayoutView from './components/PlayoutView';
+import ExoPlayerView from './components/ExoPlayerView';
 
 // Configuração Supabase
 declare const supabase: any;
@@ -466,6 +467,7 @@ const App: React.FC = () => {
           <Route path="/" element={<Home />} />
           <Route path="/controller" element={<AuthGuard><ControllerView /></AuthGuard>} />
           <Route path="/p" element={<PlayoutView />} />
+          <Route path="/exo" element={<ExoPlayerView />} />
           <Route path="/:pin" element={<PlayoutView />} />
         </Routes>
       </AuthProvider>
