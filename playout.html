@@ -45,11 +45,13 @@
                 <div class="w-8 h-8 border-4 border-white/5 border-t-red-600 rounded-full animate-spin"></div>
             </div>
 
-            <!-- INDICADOR SEEK -->
-            <div id="seek-indicator" class="hidden absolute inset-0 z-[70] flex items-center justify-center pointer-events-none">
-                <div class="bg-black/80 backdrop-blur-2xl px-10 py-6 rounded-[2rem] border border-white/10 flex flex-col items-center gap-3">
-                   <div id="seek-icon-fwd" class="hidden"><svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg></div>
-                   <div id="seek-icon-bwd" class="hidden"><svg class="w-12 h-12 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg></div>
+            <!-- FEEDBACK VISUAL CENTRAL -->
+            <div id="seek-indicator" class="hidden absolute inset-0 z-[70] flex items-center justify-center pointer-events-none transition-all duration-300">
+                <div class="bg-black/60 backdrop-blur-2xl px-12 py-8 rounded-[3rem] border border-white/10 flex flex-col items-center gap-4">
+                   <div id="icon-fwd" class="hidden"><svg class="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg></div>
+                   <div id="icon-bwd" class="hidden"><svg class="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg></div>
+                   <div id="icon-play" class="hidden"><svg class="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></div>
+                   <div id="icon-pause" class="hidden"><svg class="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg></div>
                    <span id="seek-text" class="text-lg font-black text-white italic tracking-tighter"></span>
                 </div>
             </div>
@@ -66,12 +68,15 @@
                 </div>
             </div>
 
-            <!-- Fallback Warning -->
-            <div id="insecure-msg" class="hidden absolute bottom-24 left-1/2 -translate-x-1/2 z-50 w-full max-w-xs px-6 transition-opacity duration-500">
-                <div class="bg-black/90 backdrop-blur-xl p-6 rounded-[2rem] border border-white/10 text-center shadow-2xl">
-                    <p class="text-amber-500 text-[8px] font-black uppercase tracking-widest mb-4">Problema de carregamento detectado</p>
-                    <button id="external-btn" class="bg-white text-black px-6 py-4 rounded-2xl text-[9px] font-black uppercase w-full">ABRIR LINK EXTERNO</button>
-                </div>
+            <!-- BARRA DE PROGRESSO VOD -->
+            <div id="vod-bar" class="hidden absolute bottom-0 inset-x-0 p-8 z-[60] bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-500">
+               <div class="flex items-center gap-4 mb-2">
+                  <span id="time-curr" class="text-[10px] font-mono font-black text-white bg-red-600 px-2 py-0.5 rounded">00:00</span>
+                  <div class="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                     <div id="progress-line" class="h-full bg-red-600" style="width: 0%"></div>
+                  </div>
+                  <span id="time-dur" class="text-[10px] font-mono font-black text-zinc-500">00:00</span>
+               </div>
             </div>
         </div>
 
@@ -86,65 +91,85 @@
         let hlsInstance = null;
         let tsInstance = null;
         let uiTimer = null;
-        let insecureVisible = false;
         let isMP4 = false;
         let lastTap = 0;
-        let seekTimer = null;
+        let tapTimer = null;
+        let fbTimer = null;
 
         const video = document.getElementById('main-video');
         const root = document.getElementById('app-root');
         const uiLayer = document.getElementById('ui-layer');
-        const insecureMsg = document.getElementById('insecure-msg');
+        const vodBar = document.getElementById('vod-bar');
 
-        window.onload = () => { if (activePin) { showUnlock(); startSync(); } else { showLogin(); } };
+        function formatTime(s) {
+            if (!s || isNaN(s)) return '00:00';
+            const h = Math.floor(s / 3600);
+            const m = Math.floor((s % 3600) / 60);
+            const sec = Math.floor(s % 60);
+            return h > 0 ? `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}` : `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+        }
+
+        video.ontimeupdate = () => {
+            if (!isMP4) return;
+            document.getElementById('time-curr').innerText = formatTime(video.currentTime);
+            document.getElementById('progress-line').style.width = `${(video.currentTime / video.duration) * 100}%`;
+        };
+        video.onloadedmetadata = () => {
+            if (isMP4) document.getElementById('time-dur').innerText = formatTime(video.duration);
+        };
 
         function resetUITimer() {
-            uiLayer.style.opacity = '1';
-            uiLayer.style.pointerEvents = 'auto';
-            if (insecureVisible) insecureMsg.style.opacity = '1';
+            uiLayer.style.opacity = '1'; uiLayer.style.pointerEvents = 'auto';
+            if (isMP4) vodBar.style.opacity = '1';
             root.classList.remove('hide-cursor');
             if (uiTimer) clearTimeout(uiTimer);
-            uiTimer = setTimeout(() => { uiLayer.style.opacity = '0'; uiLayer.style.pointerEvents = 'none'; insecureMsg.style.opacity = '0'; root.classList.add('hide-cursor'); }, 4000);
+            uiTimer = setTimeout(() => { uiLayer.style.opacity = '0'; uiLayer.style.pointerEvents = 'none'; vodBar.style.opacity = '0'; root.classList.add('hide-cursor'); }, 4000);
+        }
+
+        function showFeedback(type, text = '') {
+            const ind = document.getElementById('seek-indicator');
+            ['icon-fwd', 'icon-bwd', 'icon-play', 'icon-pause'].forEach(id => document.getElementById(id).classList.add('hidden'));
+            document.getElementById(`icon-${type}`).classList.remove('hidden');
+            document.getElementById('seek-text').innerText = text;
+            ind.classList.remove('hidden'); ind.style.opacity = '1'; ind.style.transform = 'scale(1)';
+            if (fbTimer) clearTimeout(fbTimer);
+            fbTimer = setTimeout(() => { ind.style.opacity = '0'; ind.style.transform = 'scale(0.9)'; setTimeout(() => ind.classList.add('hidden'), 300); }, 800);
+        }
+
+        function togglePlay() {
+            if (video.paused) { video.play(); showFeedback('play'); } else { video.pause(); showFeedback('pause'); }
+        }
+
+        function seek(s) {
+            if (!isMP4) return;
+            video.currentTime = Math.max(0, Math.min(video.currentTime + s, video.duration));
+            showFeedback(s > 0 ? 'fwd' : 'bwd', s > 0 ? '+ 5:00' : '- 5:00');
         }
 
         window.addEventListener('mousemove', resetUITimer);
         window.addEventListener('touchstart', resetUITimer);
         window.addEventListener('keydown', (e) => {
             resetUITimer();
-            if (!isMP4) return;
-            if (e.key === 'ArrowRight') seek(300);
-            if (e.key === 'ArrowLeft') seek(-300);
+            if (e.key === ' ' || e.key === 'Enter' || e.key === 'MediaPlayPause') { e.preventDefault(); togglePlay(); }
+            if (isMP4) { if (e.key === 'ArrowRight') seek(300); if (e.key === 'ArrowLeft') seek(-300); }
         });
 
-        function seek(seconds) {
-            if (!isMP4) return;
-            video.currentTime = Math.max(0, Math.min(video.currentTime + seconds, video.duration));
-            const ind = document.getElementById('seek-indicator');
-            const iconFwd = document.getElementById('seek-icon-fwd');
-            const iconBwd = document.getElementById('seek-icon-bwd');
-            const text = document.getElementById('seek-text');
-            
-            ind.classList.remove('hidden');
-            if (seconds > 0) { iconFwd.classList.remove('hidden'); iconBwd.classList.add('hidden'); text.innerText = '+ 5:00'; }
-            else { iconBwd.classList.remove('hidden'); iconFwd.classList.add('hidden'); text.innerText = '- 5:00'; }
-            
-            if (seekTimer) clearTimeout(seekTimer);
-            seekTimer = setTimeout(() => ind.classList.add('hidden'), 800);
-        }
-
-        root.addEventListener('touchstart', (e) => {
-            if (!isMP4) return;
+        root.addEventListener('click', (e) => {
+            if (!isMP4) { togglePlay(); return; }
             const now = Date.now();
             if (now - lastTap < 300) {
-                const touchX = e.touches[0].clientX;
-                if (touchX > window.innerWidth / 2) seek(300); else seek(-300);
+                if (tapTimer) clearTimeout(tapTimer);
+                if (e.clientX > window.innerWidth / 2) seek(300); else seek(-300);
+                lastTap = 0;
+            } else {
+                lastTap = now;
+                tapTimer = setTimeout(() => { togglePlay(); lastTap = 0; }, 300);
             }
-            lastTap = now;
         });
 
-        function showLogin() { document.getElementById('login-screen').classList.remove('hidden'); document.getElementById('unlock-screen').classList.add('hidden'); }
+        function showLogin() { document.getElementById('login-screen').classList.remove('hidden'); }
         function showUnlock() { document.getElementById('login-screen').classList.add('hidden'); document.getElementById('unlock-screen').classList.remove('hidden'); }
-        function showPlayer() { document.getElementById('unlock-screen').classList.add('hidden'); document.getElementById('player-container').classList.remove('hidden'); if(!currentUrl) document.getElementById('idle-screen').classList.remove('hidden'); resetUITimer(); }
+        function showPlayer() { document.getElementById('unlock-screen').classList.add('hidden'); document.getElementById('player-container').classList.remove('hidden'); resetUITimer(); }
 
         document.getElementById('pin-form').onsubmit = (e) => {
             e.preventDefault();
@@ -164,34 +189,23 @@
             if (hlsInstance) hlsInstance.destroy(); if (tsInstance) tsInstance.destroy();
             video.pause(); video.removeAttribute('src'); video.load();
             document.getElementById('loading-overlay').classList.remove('hidden');
-            insecureMsg.classList.add('hidden'); insecureVisible = false;
             document.getElementById('idle-screen').classList.add('hidden');
 
             const lowUrl = currentUrl.toLowerCase();
             isMP4 = lowUrl.includes('.mp4') || lowUrl.includes('.mkv');
-            
-            setTimeout(() => { 
-                if (document.getElementById('loading-overlay').classList.contains('hidden')) return;
-                insecureMsg.classList.remove('hidden'); insecureVisible = true; resetUITimer();
-            }, 8000);
+            if (isMP4) vodBar.classList.remove('hidden'); else vodBar.classList.add('hidden');
 
             try {
                 if (isMP4) {
                     video.src = currentUrl;
                     video.oncanplay = () => { video.play(); document.getElementById('loading-overlay').classList.add('hidden'); };
                 } else if (lowUrl.includes('.m3u8') && Hls.isSupported()) {
-                    hlsInstance = new Hls({ maxBufferLength: 10, maxBufferSize: 30 * 1000 * 1000 }); 
+                    hlsInstance = new Hls({ maxBufferLength: 10 }); 
                     hlsInstance.loadSource(currentUrl); hlsInstance.attachMedia(video);
                     hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => { video.play(); document.getElementById('loading-overlay').classList.add('hidden'); });
-                } else if (mpegts.getFeatureList().mseLivePlayback) {
-                    tsInstance = mpegts.createPlayer({ type: 'mse', isLive: true, url: currentUrl });
-                    tsInstance.attachMediaElement(video); tsInstance.load(); tsInstance.play();
-                    document.getElementById('loading-overlay').classList.add('hidden');
                 } else { video.src = currentUrl; video.play(); document.getElementById('loading-overlay').classList.add('hidden'); }
             } catch (e) {}
         }
-
-        document.getElementById('external-btn').onclick = () => window.open(currentUrl, '_blank');
 
         function startSync() {
             const connect = () => {
