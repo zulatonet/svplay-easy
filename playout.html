@@ -63,17 +63,18 @@
                     <span id="signal-name" class="text-[10px] font-black uppercase tracking-tight"></span>
                 </div>
                 <div class="flex gap-4 pointer-events-auto">
-                    <button id="fullscreen-btn" class="bg-white/5 p-3 rounded-full text-white/50 border border-white/5"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg></button>
+                    <button id="fullscreen-btn" class="bg-white/5 p-3 rounded-full text-white/50 border border-white/5"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" /></svg></button>
                     <button id="logout-btn" class="bg-white/5 px-6 py-3 rounded-full text-[8px] font-black uppercase text-white/50 border border-white/5">Sair</button>
                 </div>
             </div>
 
             <!-- BARRA DE PROGRESSO VOD -->
             <div id="vod-bar" class="hidden absolute bottom-0 inset-x-0 p-8 z-[60] bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-500">
-               <div class="flex items-center gap-4 mb-2">
+               <div class="flex items-center gap-4 mb-2 pointer-events-auto">
                   <span id="time-curr" class="text-[10px] font-mono font-black text-white bg-red-600 px-2 py-0.5 rounded">00:00</span>
-                  <div class="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
-                     <div id="progress-line" class="h-full bg-red-600" style="width: 0%"></div>
+                  <div id="progress-container" class="flex-1 h-2 bg-white/10 rounded-full overflow-hidden cursor-pointer relative group">
+                     <div id="progress-line" class="h-full bg-red-600 transition-all duration-100" style="width: 0%"></div>
+                     <div class="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                   </div>
                   <span id="time-dur" class="text-[10px] font-mono font-black text-zinc-500">00:00</span>
                </div>
@@ -100,6 +101,7 @@
         const root = document.getElementById('app-root');
         const uiLayer = document.getElementById('ui-layer');
         const vodBar = document.getElementById('vod-bar');
+        const progressContainer = document.getElementById('progress-container');
 
         function formatTime(s) {
             if (!s || isNaN(s)) return '00:00';
@@ -118,6 +120,15 @@
             if (isMP4) document.getElementById('time-dur').innerText = formatTime(video.duration);
         };
 
+        progressContainer.onclick = (e) => {
+            e.stopPropagation();
+            if (!isMP4 || !video.duration) return;
+            const rect = progressContainer.getBoundingClientRect();
+            const pos = (e.clientX - rect.left) / rect.width;
+            video.currentTime = pos * video.duration;
+            showFeedback('play');
+        };
+
         function resetUITimer() {
             uiLayer.style.opacity = '1'; uiLayer.style.pointerEvents = 'auto';
             if (isMP4) vodBar.style.opacity = '1';
@@ -129,7 +140,8 @@
         function showFeedback(type, text = '') {
             const ind = document.getElementById('seek-indicator');
             ['icon-fwd', 'icon-bwd', 'icon-play', 'icon-pause'].forEach(id => document.getElementById(id).classList.add('hidden'));
-            document.getElementById(`icon-${type}`).classList.remove('hidden');
+            const iconEl = document.getElementById(`icon-${type}`);
+            if (iconEl) iconEl.classList.remove('hidden');
             document.getElementById('seek-text').innerText = text;
             ind.classList.remove('hidden'); ind.style.opacity = '1'; ind.style.transform = 'scale(1)';
             if (fbTimer) clearTimeout(fbTimer);
@@ -155,6 +167,7 @@
         });
 
         root.addEventListener('click', (e) => {
+            if (e.target.closest('#vod-bar')) return; // Não pausar se clicar na barra
             if (!isMP4) { togglePlay(); return; }
             const now = Date.now();
             if (now - lastTap < 300) {

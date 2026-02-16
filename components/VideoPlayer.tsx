@@ -12,6 +12,7 @@ interface VideoPlayerProps {
 
 const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const progressBarRef = useRef<HTMLDivElement>(null);
   const hlsRef = useRef<any>(null);
   const tsPlayerRef = useRef<any>(null);
   const [error, setError] = useState<string | null>(null);
@@ -22,7 +23,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }
   // Estados de Tempo
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [seekIndicator, setSeekIndicator] = useState<{ type: 'forward' | 'backward' | 'play' | 'pause', visible: boolean }>({ type: 'forward', visible: false });
+  const [seekIndicator, setSeekIndicator] = useState<{ type: 'forward' | 'backward' | 'play' | 'pause' | 'seek', visible: boolean }>({ type: 'forward', visible: false });
   
   const seekTimerRef = useRef<number | null>(null);
   const tapTimerRef = useRef<number | null>(null);
@@ -56,7 +57,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }
   const isMP4 = lowerProcessed.includes('.mp4') || lowerProcessed.includes('.mkv') || lowerProcessed.includes('.mov');
   const isHLS = lowerProcessed.includes('.m3u8') || lowerProcessed.includes('output=hls') || lowerProcessed.includes('stream') || lowerProcessed.includes('chunklist');
 
-  const showFeedback = (type: 'forward' | 'backward' | 'play' | 'pause') => {
+  const showFeedback = (type: 'forward' | 'backward' | 'play' | 'pause' | 'seek') => {
     setSeekIndicator({ type, visible: true });
     if (seekTimerRef.current) window.clearTimeout(seekTimerRef.current);
     seekTimerRef.current = window.setTimeout(() => setSeekIndicator(prev => ({ ...prev, visible: false })), 800);
@@ -78,6 +79,18 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }
     const newTime = videoRef.current.currentTime + seconds;
     videoRef.current.currentTime = Math.max(0, Math.min(newTime, videoRef.current.duration));
     showFeedback(seconds > 0 ? 'forward' : 'backward');
+  };
+
+  const handleProgressBarClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Evita dar pause ao clicar na barra
+    if (!videoRef.current || !progressBarRef.current || !isMP4 || duration === 0) return;
+    
+    const rect = progressBarRef.current.getBoundingClientRect();
+    const pos = (e.clientX - rect.left) / rect.width;
+    const targetTime = pos * duration;
+    
+    videoRef.current.currentTime = targetTime;
+    showFeedback('seek');
   };
 
   useEffect(() => {
@@ -187,6 +200,7 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }
            {seekIndicator.type === 'backward' && <svg className="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>}
            {seekIndicator.type === 'play' && <svg className="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>}
            {seekIndicator.type === 'pause' && <svg className="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>}
+           {seekIndicator.type === 'seek' && <svg className="w-16 h-16 text-white" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/><circle cx="12" cy="12" r="3"/></svg>}
            {(seekIndicator.type === 'forward' || seekIndicator.type === 'backward') && (
               <span className="text-xl font-black text-white italic tracking-tighter">{seekIndicator.type === 'forward' ? '+ 5:00' : '- 5:00'}</span>
            )}
@@ -206,11 +220,19 @@ const VideoPlayer: React.FC<VideoPlayerProps> = ({ url, onClose, showUI = true }
 
       {/* Barra de Progresso e Tempo VOD */}
       {isMP4 && (
-        <div className={`absolute bottom-0 inset-x-0 p-8 z-[60] bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-500 ${showUI ? 'opacity-100' : 'opacity-0'}`}>
+        <div 
+          className={`absolute bottom-0 inset-x-0 p-8 z-[60] bg-gradient-to-t from-black/80 to-transparent transition-opacity duration-500 ${showUI ? 'opacity-100' : 'opacity-0'}`}
+          onClick={(e) => e.stopPropagation()}
+        >
            <div className="flex items-center gap-4 mb-2">
               <span className="text-[10px] font-mono font-black text-white bg-red-600 px-2 py-0.5 rounded">{formatTime(currentTime)}</span>
-              <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
-                 <div className="h-full bg-red-600" style={{ width: `${(currentTime/duration)*100}%` }}></div>
+              <div 
+                ref={progressBarRef}
+                onClick={handleProgressBarClick}
+                className="flex-1 h-2 bg-white/10 rounded-full overflow-hidden cursor-pointer group relative"
+              >
+                 <div className="h-full bg-red-600 transition-all duration-100" style={{ width: `${(currentTime/duration)*100}%` }}></div>
+                 <div className="absolute inset-0 bg-white/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
               </div>
               <span className="text-[10px] font-mono font-black text-zinc-500">{formatTime(duration)}</span>
            </div>
